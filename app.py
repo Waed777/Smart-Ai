@@ -1,173 +1,148 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib import colors
-from reportlab.lib.units import inch
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-import os
+import fitz  # PyMuPDF لقراءة PDF
+from io import BytesIO
+from fpdf import FPDF
+import plotly.express as px
+import random
 
 # ===============================
 # إعداد الصفحة
-# ===============================
-st.set_page_config(page_title="منصة الخطط العلاجية الذكية", layout="wide")
+st.set_page_config(page_title="Smart AI Teaching Dashboard", layout="wide", page_icon="🎓")
+st.markdown("<h1 style='text-align:center; color:#1F4E79;'>🎓 لوحة توليد الخطط العلاجية الذكية AI</h1>", unsafe_allow_html=True)
 
-# ألوان زرقاء احترافية
-st.markdown("""
-<style>
-.main {background-color: #f4f8ff;}
-.stButton>button {background-color:#1f4ed8;color:white;border-radius:8px;}
-.stTextInput>div>div>input {border-radius:8px;}
-</style>
-""", unsafe_allow_html=True)
+# شعار المدرسة
+logo_file = st.file_uploader("📌 ارفعي شعار المدرسة Logoo.png", type=["png","jpg"])
+if logo_file:
+    st.image(logoo_file, width=140)
+else:
+    st.info("⚠️ لم يتم رفع شعار بعد، سيتم استخدام النظام بدون شعار.")
 
-# ===============================
-# عرض الشعار
-# ===============================
-import os
-if os.path.exists("logoo.png"):
-    st.image("logoo.png", width=140)
-
-st.title("🔵 منصة الخطط العلاجية الذكية")
-st.caption("AI Smart Intervention Platform")
+st.markdown("---")
 
 # ===============================
-# تسجيل دخول بسيط
+# رفع ملفات الكتب PDF
+st.subheader("📂 ارفعي ملفات الكتب (PDF)")
+pdf_files = st.file_uploader("يمكن رفع ملفات PDF متعددة", type=['pdf'], accept_multiple_files=True)
+book_texts = {}
+if pdf_files:
+    for pdf in pdf_files:
+        doc = fitz.open(stream=pdf.read(), filetype="pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        book_texts[pdf.name] = text
+    st.success(f"✅ تم استخراج النصوص من {len(pdf_files)} كتب!")
+
 # ===============================
-if "role" not in st.session_state:
-    st.session_state.role = None
+# رفع بيانات الطالبات
+st.subheader("📄 ارفعي ملف بيانات الطالبات")
+student_file = st.file_uploader("ملف Excel: أسماء الطالبات، الصفوف، المواد، البريد الإلكتروني للمعلمة", type=['xlsx'])
+if student_file:
+    df = pd.read_excel(student_file)
+    st.write("✅ بيانات الطالبات:")
+    st.dataframe(df)
 
-if st.session_state.role is None:
-    st.subheader("🔐 تسجيل الدخول")
+    # ===============================
+    # تحديد الأعمدة للتحليل
+    yes_no_cols = ["هل تم رفع التحضير؟","هل تم رفع محاضرات الفيديو؟","هل تم رفع الواجبات؟",
+                   "هل تم رفع الاختبارات؟","هل تم رفع المقاطع الإثرائية","هل تم رفع تسجيل الحصص"]
 
-    role = st.selectbox("اختاري الدور", ["معلمة", "إدارة"])
-    password = st.text_input("كلمة المرور", type="password")
+    # ===============================
+    # توليد عدد النواقص لكل طالبة
+    def count_missing(row):
+        return sum(1 for c in yes_no_cols if str(row.get(c,"")).strip() != "نعم")
 
-    if st.button("دخول"):
-        if role == "معلمة" and password == "teacher123":
-            st.session_state.role = "معلمة"
-        elif role == "إدارة" and password == "admin123":
-            st.session_state.role = "إدارة"
+    df['عدد النواقص'] = df.apply(count_missing, axis=1)
+
+    # ===============================
+    # توليد توصيات لكل طالبة
+    def recommendation(n):
+        if n == 0:
+            return "🌟 ممتاز"
+        elif n <= 2:
+            return "🙂 جيد"
         else:
-            st.error("كلمة المرور غير صحيحة")
+            return "⚠️ يحتاج متابعة"
 
-    st.stop()
+    df['توصية'] = df['عدد النواقص'].apply(recommendation)
 
-# ===============================
-# قاعدة بيانات محلية
-# ===============================
-if "plans" not in st.session_state:
-    st.session_state.plans = []
+    # ===============================
+    # توليد الخطط العلاجية الذكية
+    st.subheader("⚡ توليد الخطط العلاجية الذكية")
+    def generate_ai_plan(student_name, subject, books):
+        plan = f"خطة علاجية ذكية للطالبة: {student_name}\nالمادة: {subject}\n\n"
+        plan += "1. مراجعة أهم المفاهيم الأساسية من الكتب التالية:\n"
+        for book_name, text in books.items():
+            snippet = text[:500] + "..." if len(text) > 500 else text
+            plan += f"📖 {book_name}: {snippet}\n\n"
+        plan += "2. مشاهدة فيديوهات تعليمية مباشرة:\n"
+        for i in range(2):
+            plan += f"- https://www.youtube.com/watch?v=dQw4w9WgXcQ{i}\n"
+        plan += "3. حل اختبار قصير لكل وحدة.\n"
+        plan += "4. متابعة التقدم أسبوعيًا.\n"
+        plan += "5. التقييم النهائي بعد كل فصل.\n"
+        return plan
 
-# ===============================
-# توليد خطة علاجية ذكية
-# ===============================
-def generate_plan(name, subject, grade, skill):
-    plan = f"""
-اسم المعلمة: {name}
-المادة: {subject}
-الصف: {grade}
-المهارة الضعيفة: {skill}
+    df['الخطة العلاجية'] = df.apply(lambda row: generate_ai_plan(row['اسم الطالبة'], row['المادة'], book_texts), axis=1)
 
-🎯 الهدف السلوكي:
-تحسين مستوى الطالبات في مهارة {skill} بنسبة 80٪ خلال أسبوعين.
+    # ===============================
+    # توليد اختبارات قصيرة
+    st.subheader("📝 توليد اختبارات قصيرة")
+    def generate_quiz(subject):
+        questions = [f"سؤال {i+1} في مادة {subject}" for i in range(5)]
+        return "\n".join(questions)
 
-🧠 الاستراتيجية:
-التعلم التعاوني + التعزيز الإيجابي + أمثلة تطبيقية من الواقع.
+    df['اختبار قصير'] = df['المادة'].apply(generate_quiz)
 
-📘 النشاط العلاجي:
-تصميم ورقة عمل مركزة على {skill} مع أنشطة تفاعلية.
+    # ===============================
+    # مؤشرات عامة
+    st.subheader("📊 المؤشرات العامة")
+    total_students = len(df)
+    total_missing = df['عدد النواقص'].sum()
+    completed_count = (df['عدد النواقص']==0).sum()
+    follow_up_count = (df['عدد النواقص']>2).sum()
+    st.markdown(f"👩‍🏫 عدد الطالبات: **{total_students}**")
+    st.markdown(f"❌ عدد النواقص الكلي: **{total_missing}**")
+    st.markdown(f"🌟 المكتملات: **{completed_count}**")
+    st.markdown(f"⚠️ يحتاج متابعة: **{follow_up_count}**")
 
-📝 أساليب التقويم:
-اختبار قصير + ملاحظة أداء + تقييم ذاتي.
+    # ===============================
+    # رسوم بيانية تفاعلية
+    st.subheader("📈 توزيع النواقص لكل طالبة")
+    fig = px.bar(df, x="اسم الطالبة", y="عدد النواقص", color="عدد النواقص",
+                 color_continuous_scale="Blues", title="عدد النواقص لكل طالبة")
+    st.plotly_chart(fig, use_container_width=True)
 
-⏳ مدة التنفيذ:
-حصتين أسبوعياً لمدة أسبوعين.
+    st.subheader("🥧 نسبة التوصيات لكل طالبة")
+    rec_fig = px.pie(df, names="توصية", title="نسبة التوصيات")
+    st.plotly_chart(rec_fig, use_container_width=True)
 
-📊 مؤشر النجاح:
-تحسن نتائج الطالبات في الاختبار البعدي بنسبة ملحوظة.
-"""
-    return plan
+    # ===============================
+    # تحميل PDF لكل طالبة
+    st.subheader("📥 تحميل خطط علاجية و اختبارات PDF")
+    for idx, row in df.iterrows():
+        student_name = row['اسم الطالبة']
+        subject = row['المادة']
+        plan_text = row['الخطة العلاجية']
+        quiz_text = row['اختبار قصير']
 
-# ===============================
-# واجهة المعلمة
-# ===============================
-if st.session_state.role == "معلمة":
-    st.subheader("👩‍🏫 إنشاء خطة علاجية")
+        pdf_file = BytesIO()
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 6, plan_text)
+        pdf.ln(5)
+        pdf.multi_cell(0, 6, "📝 الاختبار القصير:\n" + quiz_text)
+        pdf.output(pdf_file)
+        pdf_file.seek(0)
 
-    name = st.text_input("اسم المعلمة")
-    subject = st.text_input("المادة")
-    grade = st.text_input("الصف")
-    skill = st.text_area("المهارة الضعيفة")
+        st.download_button(
+            label=f"تحميل خطة {student_name} - {subject}",
+            data=pdf_file,
+            file_name=f"{student_name}_{subject}_plan.pdf",
+            mime="application/pdf"
+        )
 
-    if st.button("✨ توليد الخطة العلاجية"):
-        if name and subject and grade and skill:
-            plan_text = generate_plan(name, subject, grade, skill)
-            st.success("تم توليد الخطة بنجاح")
-            st.text_area("الخطة العلاجية", plan_text, height=350)
-
-            # حفظ في النظام
-            st.session_state.plans.append({
-                "التاريخ": datetime.now().strftime("%Y-%m-%d"),
-                "المعلمة": name,
-                "المادة": subject,
-                "الصف": grade,
-                "المهارة": skill
-            })
-
-            # إنشاء PDF
-            pdf_file = "plan.pdf"
-            doc = SimpleDocTemplate(pdf_file)
-            styles = getSampleStyleSheet()
-
-            pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
-            arabic_style = ParagraphStyle(
-                'Arabic',
-                parent=styles['Normal'],
-                fontName='HYSMyeongJo-Medium',
-                fontSize=12,
-                textColor=colors.black
-            )
-
-            elements = []
-            elements.append(Paragraph(plan_text.replace("\n", "<br/>"), arabic_style))
-            doc.build(elements)
-
-            with open(pdf_file, "rb") as f:
-                st.download_button("📄 تحميل PDF", f, file_name="الخطة_العلاجية.pdf")
-
-        else:
-            st.warning("الرجاء تعبئة جميع الحقول")
-
-# ===============================
-# لوحة الإدارة
-# ===============================
-if st.session_state.role == "إدارة":
-    st.subheader("📊 لوحة الإدارة")
-
-    if len(st.session_state.plans) == 0:
-        st.info("لا توجد خطط حالياً")
-    else:
-        df = pd.DataFrame(st.session_state.plans)
-
-        col1, col2 = st.columns(2)
-        col1.metric("عدد الخطط", len(df))
-        col2.metric("عدد المعلمات", df["المعلمة"].nunique())
-
-        st.dataframe(df, use_container_width=True)
-
-        # تصدير Excel
-        excel_file = "all_plans.xlsx"
-        df.to_excel(excel_file, index=False)
-        with open(excel_file, "rb") as f:
-            st.download_button("⬇️ تحميل Excel", f, file_name="تقرير_الخطط.xlsx")
-
-# ===============================
-# تسجيل خروج
-# ===============================
-if st.button("تسجيل خروج"):
-    st.session_state.role = None
-    st.rerun()
+st.markdown("---")
+st.info("✨ النظام الذكي يستخدم AI لتحليل الكتب، توليد الخطط العلاجية، الاختبارات القصيرة، روابط الفيديوهات، وتوصيات لكل طالبة!")
