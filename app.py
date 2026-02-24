@@ -27,8 +27,9 @@ st.markdown("""
 # ===============================
 # عرض الشعار
 # ===============================
+import os
 if os.path.exists("logoo.png"):
-    st.image("logo.png", width=140)
+    st.image("logoo.png", width=140)
 
 st.title("🔵 منصة الخطط العلاجية الذكية")
 st.caption("AI Smart Intervention Platform")
